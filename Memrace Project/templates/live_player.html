@@ -1,0 +1,619 @@
+{% extends "base.html" %}
+
+{% block title %}Live Quiz - MEMRACE AI{% endblock %}
+
+{% block styles %}
+<style>
+    /* ── Lock out base template margins/padding for this page ── */
+    body {
+        overflow: hidden !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    /*
+     * The entire player UI is a fixed overlay covering the whole viewport.
+     * This breaks out of any parent container or body padding from base.html.
+     */
+    #livePlayerRoot {
+        position: fixed;
+        inset: 0;
+        /* top:0 right:0 bottom:0 left:0 */
+        background: #13003a;
+        color: white;
+        font-family: 'Inter', sans-serif;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        width: 100vw;
+        overflow: hidden;
+    }
+
+    /* ━━━ SHARED: views default hidden, flex when active ━━━ */
+    .pv {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+        text-align: center;
+        padding: 2rem;
+    }
+
+    .pv.active {
+        display: flex;
+    }
+
+    /* ━━━ WAITING VIEW ━━━ */
+    #pvWaiting .emo {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+    }
+
+    #pvWaiting h2 {
+        font-size: 2.2rem;
+        font-weight: 800;
+        margin-bottom: 0.5rem;
+    }
+
+    #pvWaiting p {
+        color: rgba(255, 255, 255, 0.55);
+        font-size: 1.1rem;
+    }
+
+    /* ━━━ ANSWERING VIEW ━━━
+     * Fixed heights so it never collapses:
+     *   - question bar  = 100px
+     *   - answer grid  = rest of viewport minus bar and bottom-bar (56px)
+     */
+    #pvAnswering {
+        display: none;
+        flex-direction: column;
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        align-items: stretch;
+        justify-content: flex-start;
+        padding-bottom: 56px;
+        /* room for bottom bar */
+    }
+
+    #pvAnswering.active {
+        display: flex;
+    }
+
+    /* Question + timer bar */
+    .q-bar {
+        height: 100px;
+        min-height: 100px;
+        background: rgba(255, 255, 255, 0.06);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0 1.2rem;
+        flex-shrink: 0;
+    }
+
+    .q-timer {
+        width: 62px;
+        height: 62px;
+        min-width: 62px;
+        background: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.6rem;
+        font-weight: 900;
+        color: #13003a;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+        transition: color 0.3s;
+        flex-shrink: 0;
+    }
+
+    .q-timer.urgent {
+        color: #e21b3c;
+        animation: timerPulse 0.5s infinite alternate;
+    }
+
+    @keyframes timerPulse {
+        from {
+            transform: scale(1);
+        }
+
+        to {
+            transform: scale(1.12);
+        }
+    }
+
+    #questionText {
+        font-size: 1.15rem;
+        font-weight: 700;
+        line-height: 1.35;
+        flex: 1;
+        text-align: left;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+    }
+
+    /* 2×2 Answer grid: fills remaining space */
+    .ans-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr 1fr;
+        gap: 5px;
+        padding: 5px;
+        flex: 1;
+        height: 0;
+        /* forces grid to respect flex parent's height */
+        min-height: 0;
+    }
+
+    /* Answer button — global button styles are overridden via important */
+    .ans-btn {
+        border: none !important;
+        border-radius: 12px !important;
+        cursor: pointer !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 12px !important;
+        font-size: 1.1rem !important;
+        font-weight: 700 !important;
+        color: white !important;
+        transition: transform 0.1s, filter 0.1s !important;
+        padding: 1rem !important;
+        box-shadow: 0 6px 0 rgba(0, 0, 0, 0.3) !important;
+        width: 100% !important;
+        height: 100% !important;
+        text-align: left !important;
+    }
+
+    .ans-btn:active {
+        transform: translateY(5px) !important;
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3) !important;
+    }
+
+    .ans-btn:disabled {
+        opacity: 0.45 !important;
+        cursor: default !important;
+        transform: none !important;
+    }
+
+    .ans-btn .shape {
+        width: 38px;
+        height: 38px;
+        min-width: 38px;
+        background: rgba(255, 255, 255, 0.28);
+        flex-shrink: 0;
+    }
+
+    .ans-btn .lbl {
+        flex: 1;
+        line-height: 1.25;
+    }
+
+    /* Colours */
+    #btnA {
+        background-color: #E21B3C;
+    }
+
+    #btnB {
+        background-color: #1368CE;
+    }
+
+    #btnC {
+        background-color: #D89E00;
+    }
+
+    #btnD {
+        background-color: #26890C;
+    }
+
+    /* Shapes */
+    .tri {
+        clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+        border-radius: 0;
+    }
+
+    .dmd {
+        clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+        border-radius: 0;
+    }
+
+    .cir {
+        border-radius: 50%;
+    }
+
+    .sqr {
+        border-radius: 6px;
+    }
+
+    /* ━━━ SUBMITTED VIEW ━━━ */
+    #pvSubmitted .emo {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+    }
+
+    #pvSubmitted h2 {
+        font-size: 2rem;
+        font-weight: 800;
+    }
+
+    #pvSubmitted p {
+        color: rgba(255, 255, 255, 0.55);
+        margin-top: 0.5rem;
+    }
+
+    /* ━━━ RESULT VIEW ━━━ */
+    #pvResult {
+        gap: 1rem;
+    }
+
+    .res-icon {
+        font-size: 4.5rem;
+        line-height: 1;
+    }
+
+    .res-title {
+        font-size: 2.8rem;
+        font-weight: 900;
+    }
+
+    .res-box {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 14px;
+        padding: 1rem 2.5rem;
+        min-width: 200px;
+    }
+
+    .res-box .lbl {
+        font-size: 0.8rem;
+        color: rgba(255, 255, 255, 0.6);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .res-box .score {
+        font-size: 2.4rem;
+        font-weight: 900;
+    }
+
+    .res-ca {
+        font-size: 0.95rem;
+        color: rgba(255, 255, 255, 0.55);
+    }
+
+    .res-link {
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 0.95rem;
+        margin-top: 0.5rem;
+    }
+
+    .res-link a {
+        color: white;
+        text-decoration: underline;
+    }
+
+    /* ━━━ BOTTOM BAR ━━━ */
+    #playerBar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 56px;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(10px);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 1.2rem;
+        z-index: 10000;
+    }
+
+    .bar-name {
+        font-weight: 700;
+        font-size: 0.95rem;
+    }
+
+    .bar-score {
+        background: rgba(255, 255, 255, 0.14);
+        border-radius: 30px;
+        padding: 0.3rem 0.9rem;
+        font-weight: 700;
+        font-size: 0.95rem;
+    }
+
+    /* ━━━ DOTS LOADER ━━━ */
+    .dots {
+        display: flex;
+        gap: 7px;
+        margin-top: 1rem;
+    }
+
+    .dot {
+        width: 11px;
+        height: 11px;
+        background: rgba(255, 255, 255, 0.35);
+        border-radius: 50%;
+        animation: db 1.2s infinite;
+    }
+
+    .dot:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+
+    .dot:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+
+    @keyframes db {
+
+        0%,
+        80%,
+        100% {
+            transform: translateY(0);
+            opacity: 0.35;
+        }
+
+        40% {
+            transform: translateY(-7px);
+            opacity: 1;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block body %}
+<div id="livePlayerRoot">
+
+    <!-- ── WAITING ── -->
+    <div id="pvWaiting" class="pv active">
+        <div class="emo">🎮</div>
+        <h2>You're in!</h2>
+        <p>Waiting for host to start...</p>
+        <div class="dots">
+            <div class="dot"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+        </div>
+    </div>
+
+    <!-- ── ANSWERING ── -->
+    <div id="pvAnswering">
+        <!-- Top bar: timer + question -->
+        <div class="q-bar">
+            <div class="q-timer" id="timerBadge">30</div>
+            <div id="questionText">Loading question…</div>
+        </div>
+
+        <!-- 2×2 grid -->
+        <div class="ans-grid">
+            <button class="ans-btn" id="btnA" onclick="submitAnswer('A')">
+                <div class="shape tri"></div>
+                <span class="lbl" id="lblA">Option A</span>
+            </button>
+            <button class="ans-btn" id="btnB" onclick="submitAnswer('B')">
+                <div class="shape dmd"></div>
+                <span class="lbl" id="lblB">Option B</span>
+            </button>
+            <button class="ans-btn" id="btnC" onclick="submitAnswer('C')">
+                <div class="shape cir"></div>
+                <span class="lbl" id="lblC">Option C</span>
+            </button>
+            <button class="ans-btn" id="btnD" onclick="submitAnswer('D')">
+                <div class="shape sqr"></div>
+                <span class="lbl" id="lblD">Option D</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ── SUBMITTED ── -->
+    <div id="pvSubmitted" class="pv">
+        <div class="emo">✅</div>
+        <h2>Answer Locked!</h2>
+        <p>Waiting for results...</p>
+        <div class="dots">
+            <div class="dot"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+        </div>
+    </div>
+
+    <!-- ── RESULT ── -->
+    <div id="pvResult" class="pv">
+        <div class="res-icon" id="resIcon">🎉</div>
+        <div class="res-title" id="resTitle">Correct!</div>
+        <div class="res-box">
+            <div class="lbl">Points Earned</div>
+            <div class="score" id="resScore">+0</div>
+        </div>
+        <div class="res-ca" id="resCA"></div>
+        <div class="res-link" id="resLink">Waiting for next question…</div>
+    </div>
+
+    <!-- ── BOTTOM BAR ── -->
+    <div id="playerBar">
+        <span class="bar-name" id="barName">—</span>
+        <span class="bar-score" id="barScore">0 pts</span>
+    </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+<script>
+    // ── State ──────────────────────────────────────────────────────────────────
+    const SESSION_ID = "{{ session_id }}";
+    let participantId = sessionStorage.getItem('live_participant_id');
+    let nickname = sessionStorage.getItem('live_nickname') || 'Player';
+    let currentScore = 0;
+    let currentQuizId = null;
+    let questionStart = 0;
+    let currentOptions = {};
+    let playerTimer = null;
+
+    // ── Guards ─────────────────────────────────────────────────────────────────
+    if (!participantId) { window.location.href = '/live/join'; }
+
+    document.getElementById('barName').textContent = nickname;
+
+    // ── View switcher ──────────────────────────────────────────────────────────
+    const VIEW_IDS = ['pvWaiting', 'pvAnswering', 'pvSubmitted', 'pvResult'];
+
+    function showView(id) {
+        VIEW_IDS.forEach(v => {
+            const el = document.getElementById(v);
+            el.classList.remove('active');
+            el.style.display = 'none';
+        });
+        const target = document.getElementById(id);
+        target.style.display = 'flex';
+        target.classList.add('active');
+    }
+
+    // ── Timer ──────────────────────────────────────────────────────────────────
+    function startTimer(secs) {
+        stopTimer();
+        let t = secs;
+        const badge = document.getElementById('timerBadge');
+        badge.textContent = t;
+        badge.classList.remove('urgent');
+        playerTimer = setInterval(() => {
+            t--;
+            badge.textContent = t;
+            badge.classList.toggle('urgent', t <= 5);
+            if (t <= 0) stopTimer();
+        }, 1000);
+    }
+    function stopTimer() {
+        if (playerTimer) { clearInterval(playerTimer); playerTimer = null; }
+        document.getElementById('timerBadge').classList.remove('urgent');
+    }
+
+    // ── Score ──────────────────────────────────────────────────────────────────
+    function setScore(s) {
+        currentScore = s;
+        document.getElementById('barScore').textContent = `${s} pts`;
+    }
+
+    // ── Socket ─────────────────────────────────────────────────────────────────
+    const socket = io();
+
+    socket.on('connect', () => {
+        socket.emit('player_rejoin', { participant_id: participantId, session_id: SESSION_ID });
+    });
+
+    socket.on('quiz_started', () => {
+        showView('pvWaiting');
+        document.getElementById('pvWaiting').innerHTML =
+            '<div class="emo">🚀</div><h2>Get Ready!</h2>' +
+            '<div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>';
+    });
+
+    socket.on('new_question', (data) => {
+        const q = data.question;
+        currentQuizId = q.id;
+        currentOptions = q.options;   // { A: '...', B: '...', C: '...', D: '...' }
+        questionStart = Date.now();
+        sessionStorage.removeItem('last_guess');
+
+        document.getElementById('questionText').textContent = q.question;
+        document.getElementById('lblA').textContent = q.options['A'] || '—';
+        document.getElementById('lblB').textContent = q.options['B'] || '—';
+        document.getElementById('lblC').textContent = q.options['C'] || '—';
+        document.getElementById('lblD').textContent = q.options['D'] || '—';
+
+        ['btnA', 'btnB', 'btnC', 'btnD'].forEach(id => {
+            document.getElementById(id).disabled = false;
+        });
+
+        startTimer(30);
+        showView('pvAnswering');
+    });
+
+    socket.on('question_results', (data) => {
+        stopTimer();
+        const lastGuess = sessionStorage.getItem('last_guess');
+        const isCorrect = lastGuess && (lastGuess === data.correct_answer);
+
+        const root = document.getElementById('pvResult');
+        root.style.background = '';
+
+        if (!lastGuess) {
+            document.getElementById('resIcon').textContent = '⏱️';
+            document.getElementById('resTitle').textContent = "Time's Up!";
+            document.getElementById('resScore').textContent = '+0';
+            root.style.background = 'linear-gradient(135deg,#7a0e1e,#400008)';
+        } else if (isCorrect) {
+            document.getElementById('resIcon').textContent = '✅';
+            document.getElementById('resTitle').textContent = 'Correct!';
+            root.style.background = 'linear-gradient(135deg,#0e5c08,#073004)';
+        } else {
+            document.getElementById('resIcon').textContent = '❌';
+            document.getElementById('resTitle').textContent = 'Wrong!';
+            document.getElementById('resScore').textContent = '+0';
+            root.style.background = 'linear-gradient(135deg,#7a0e1e,#400008)';
+        }
+
+        document.getElementById('resCA').textContent = `Correct: ${data.correct_answer}`;
+
+        const me = data.leaderboard.find(l => l.display_name === nickname);
+        if (me) {
+            if (isCorrect) {
+                const earned = me.score - currentScore;
+                document.getElementById('resScore').textContent = `+${earned}`;
+            }
+            setScore(me.score);
+        }
+
+        document.getElementById('resLink').textContent = 'Waiting for next question…';
+        sessionStorage.removeItem('last_guess');
+        showView('pvResult');
+    });
+
+    socket.on('session_finished', (data) => {
+        stopTimer();
+        const me = data.leaderboard.find(l => l.display_name === nickname);
+        if (me) setScore(me.score);
+        const rank = me ? data.leaderboard.indexOf(me) + 1 : '?';
+
+        document.getElementById('pvResult').style.background = 'linear-gradient(135deg,#3d006e,#1a0033)';
+        document.getElementById('resIcon').textContent = rank === 1 ? '🏆' : '🎉';
+        document.getElementById('resTitle').textContent = `#${rank} Place!`;
+        document.getElementById('resScore').textContent = `${currentScore} pts`;
+        document.getElementById('resCA').textContent = '';
+        document.getElementById('resLink').innerHTML =
+            '<a href="/dashboard">← Back to Dashboard</a>';
+        showView('pvResult');
+    });
+
+    // ── Submit ─────────────────────────────────────────────────────────────────
+    function submitAnswer(letter) {
+        if (document.getElementById('pvSubmitted').classList.contains('active')) return;
+
+        stopTimer();
+        const timeTaken = Date.now() - questionStart;
+        const answerText = currentOptions[letter];
+        if (!answerText) return;
+
+        ['btnA', 'btnB', 'btnC', 'btnD'].forEach(id => {
+            document.getElementById(id).disabled = true;
+        });
+
+        socket.emit('player_submit_answer', {
+            participant_id: participantId,
+            session_id: SESSION_ID,
+            quiz_id: currentQuizId,
+            selected_answer: answerText,
+            time_taken_ms: timeTaken
+        });
+
+        sessionStorage.setItem('last_guess', answerText);
+        showView('pvSubmitted');
+    }
+</script>
+{% endblock %}

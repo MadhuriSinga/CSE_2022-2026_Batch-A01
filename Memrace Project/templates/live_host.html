@@ -1,0 +1,419 @@
+{% extends "base.html" %}
+
+{% block title %}Live Host - MEMRACE AI{% endblock %}
+
+{% block styles %}
+<style>
+    .host-screen {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        padding: 2rem;
+    }
+
+    .pin-display {
+        font-size: 5rem;
+        font-weight: 800;
+        letter-spacing: 5px;
+        color: var(--primary-purple);
+        text-shadow: 2px 2px 0px rgba(255, 152, 0, 0.5);
+        background: white;
+        padding: 1rem 3rem;
+        border-radius: var(--radius-lg);
+        display: inline-block;
+        margin: 1rem 0;
+    }
+
+    .player-pill {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-weight: bold;
+        animation: popIn 0.3s ease-out;
+    }
+
+    @keyframes popIn {
+        0% {
+            transform: scale(0.5);
+            opacity: 0;
+        }
+
+        100% {
+            transform: scale(1);
+            opacity: 1;
+        }
+    }
+
+    .question-banner {
+        margin-bottom: 2rem;
+        font-size: 2.5rem;
+        text-align: center;
+    }
+
+    .timer-circle {
+        width: 100px;
+        height: 100px;
+        margin: 0 auto 2rem;
+    }
+
+    .host-options-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 200px 200px;
+        gap: 1.5rem;
+        width: 100%;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .host-option {
+        padding: 1.5rem 3rem;
+        border-radius: var(--radius-md);
+        font-weight: bold;
+        font-size: 2.5rem;
+        color: white;
+        display: flex;
+        align-items: center;
+        box-shadow: 0 6px 0 rgba(0, 0, 0, 0.2);
+        width: 100%;
+        height: 100%;
+        box-sizing: border-box;
+    }
+
+    .opt-A {
+        background-color: #E21B3C !important;
+    }
+
+    .opt-B {
+        background-color: #1368CE !important;
+    }
+
+    .opt-C {
+        background-color: #D89E00 !important;
+    }
+
+    .opt-D {
+        background-color: #26890C !important;
+    }
+
+    .shape-icon {
+        width: 60px;
+        height: 60px;
+        background-color: white;
+        margin-right: 25px;
+        flex-shrink: 0;
+        display: inline-block;
+    }
+
+    .shape-triangle {
+        clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+    }
+
+    .shape-diamond {
+        clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+    }
+
+    .shape-circle {
+        border-radius: 50%;
+    }
+
+    .shape-square {
+        border-radius: 8px;
+    }
+
+    .leaderboard-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 1rem;
+        background: rgba(255, 255, 255, 0.1);
+        margin-bottom: 0.5rem;
+        border-radius: var(--radius-sm);
+        font-size: 1.5rem;
+        font-weight: bold;
+    }
+
+    .leaderboard-row:nth-child(1) {
+        background: linear-gradient(90deg, #FFD700, #DAA520);
+        color: black;
+    }
+
+    .leaderboard-row:nth-child(2) {
+        background: linear-gradient(90deg, #C0C0C0, #A9A9A9);
+        color: black;
+    }
+
+    .leaderboard-row:nth-child(3) {
+        background: linear-gradient(90deg, #cd7f32, #8B4513);
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="host-screen">
+
+    <!-- Screen: Waiting Room -->
+    <div id="viewWaiting" class="glass" style="text-align: center; padding: 3rem; border-radius: var(--radius-lg);">
+        <h2 style="color: var(--text-muted);">Join at <span style="color: white; font-weight: bold;">[App URL]</span>
+            with Game PIN:</h2>
+        <div class="pin-display" id="displayPin">------</div>
+
+        <div style="margin: 2rem 0; display: flex; justify-content: space-between; align-items: center;">
+            <h3>Players (<span id="playerCount">0</span>)</h3>
+            <button class="btn-primary" id="btnStartGame" onclick="startGame()" disabled>Start Game</button>
+        </div>
+
+        <div id="playersGrid" style="display: flex; flex-wrap: wrap; gap: 1rem; min-height: 200px;">
+            <!-- Player pills here -->
+        </div>
+    </div>
+
+    <!-- Screen: Question View -->
+    <div id="viewQuestion" style="display: none; width: 100%; max-width: 1200px; margin: 0 auto;">
+        <div class="glass" style="padding: 2rem; border-radius: var(--radius-lg); margin-bottom: 2rem;">
+            <h1 class="question-banner" id="currentQuestionText" style="margin: 0;">Loading...</h1>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+            <div style="font-size: 1.5rem; font-weight: bold;">Answers: <span id="answerCount">0</span></div>
+            <div class="timer-container glass timer-circle" style="padding: 10px; border-radius: 50%;">
+                <!-- SVG omitted for brevity, using simple text -->
+                <div id="hostTimerText"
+                    style="font-size: 2.5rem; font-weight: bold; line-height: 80px; text-align: center;">30</div>
+            </div>
+            <button class="btn-secondary" onclick="skipTimer()">Skip</button>
+        </div>
+
+        <div class="host-options-grid" id="hostOptionsGrid">
+            <!-- Populated via JS -->
+        </div>
+    </div>
+
+    <!-- Screen: Results & Leaderboard -->
+    <div id="viewResults" style="display: none; padding: 2rem; max-width: 800px; margin: 0 auto; width: 100%;">
+        <div class="glass"
+            style="padding: 2rem; border-radius: var(--radius-lg); text-align: center; margin-bottom: 2rem;">
+            <h2 id="correctAnswerText" style="color: var(--accent-green); font-size: 2rem;">Correct Answer: XYZ</h2>
+        </div>
+
+        <h2 style="margin-bottom: 1rem;">Top 5 Leaderboard</h2>
+        <div id="leaderboardContainer">
+            <!-- Populated via JS -->
+        </div>
+
+        <div style="text-align: right; margin-top: 2rem;">
+            <button class="btn-primary" id="btnNextAction" onclick="nextQuestion()">Next Question →</button>
+        </div>
+    </div>
+
+</div>
+
+<!-- Socket.IO Engine -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+<script>
+    const deckId = "{{ deck_id }}";
+    const hostId = "{{ session['user_id'] }}";
+
+    let sessionId = null;
+    let quizQuestions = [];
+    let currentQuestionIndex = -1;
+    let timer = null;
+    let timeLeft = 30;
+    let players = [];
+    let currentAnswerCount = 0;
+
+    // UI
+    const viewWaiting = document.getElementById('viewWaiting');
+    const viewQuestion = document.getElementById('viewQuestion');
+    const viewResults = document.getElementById('viewResults');
+
+    function showView(view) {
+        viewWaiting.style.display = 'none';
+        viewQuestion.style.display = 'none';
+        viewResults.style.display = 'none';
+        view.style.display = 'block';
+    }
+
+    // Connect WebSockets
+    const socket = io();
+
+    socket.on('connect', () => {
+        // Init Room
+        socket.emit('host_create_session', { host_id: hostId, deck_id: deckId });
+    });
+
+    socket.on('session_created', (data) => {
+        sessionId = data.session_id;
+        document.getElementById('displayPin').textContent = data.pin;
+    });
+
+    socket.on('player_joined', (data) => {
+        players.push(data.participant);
+        document.getElementById('playerCount').textContent = players.length;
+        document.getElementById('btnStartGame').disabled = false;
+
+        const pill = document.createElement('div');
+        pill.className = 'player-pill';
+        pill.textContent = data.participant.display_name;
+        document.getElementById('playersGrid').appendChild(pill);
+    });
+
+    socket.on('answer_received', (data) => {
+        currentAnswerCount++;
+        document.getElementById('answerCount').textContent = currentAnswerCount;
+
+        if (currentAnswerCount >= players.length) {
+            skipTimer();
+        }
+    });
+
+    // Load local questions
+    async function loadQuizData() {
+        try {
+            const resp = await fetch(`/api/quizzes/deck/${deckId}`);
+            const data = await resp.json();
+            quizQuestions = data.quizzes;
+        } catch (e) { console.error('Error fetching quiz data', e); }
+    }
+
+    async function startGame() {
+        if (players.length === 0) return;
+
+        await loadQuizData();
+        if (quizQuestions.length === 0) {
+            alert('This deck has no quiz questions! Please add some first.');
+            return;
+        }
+
+        socket.emit('host_start_quiz', { session_id: sessionId });
+        nextQuestion();
+    }
+
+    function nextQuestion() {
+        currentQuestionIndex++;
+
+        if (currentQuestionIndex >= quizQuestions.length) {
+            endSession();
+            return;
+        }
+
+        currentAnswerCount = 0;
+        document.getElementById('answerCount').textContent = currentAnswerCount;
+
+        const q = quizQuestions[currentQuestionIndex];
+
+        // Broadcast
+        socket.emit('host_show_question', {
+            session_id: sessionId,
+            question_index: currentQuestionIndex,
+            question: q
+        });
+
+        // Update UI
+        document.getElementById('currentQuestionText').textContent = q.question;
+        const grid = document.getElementById('hostOptionsGrid');
+        grid.innerHTML = '';
+
+        console.log("Showing question options:", q.options);
+
+        const styles = [
+            { id: 'A', class: 'opt-A', shape: 'shape-triangle', color: '#E21B3C' },
+            { id: 'B', class: 'opt-B', shape: 'shape-diamond', color: '#1368CE' },
+            { id: 'C', class: 'opt-C', shape: 'shape-circle', color: '#D89E00' },
+            { id: 'D', class: 'opt-D', shape: 'shape-square', color: '#26890C' }
+        ];
+
+        let rawOptions = [];
+
+        if (q.options) {
+            if (Array.isArray(q.options)) {
+                rawOptions = q.options;
+            } else if (typeof q.options === 'object') {
+                // If it's a dict like {"2": true, "3": false}, the keys are the answers.
+                // If it's a dict like {"A": "2"}, the values are the answers.
+                // So if value is boolean we take keys, otherwise if value is string we take values.
+                for (const [key, val] of Object.entries(q.options)) {
+                    if (typeof val === 'boolean') {
+                        rawOptions.push(key);
+                    } else if (typeof val === 'string') {
+                        rawOptions.push(val);
+                    } else {
+                        rawOptions.push(key); // fallback
+                    }
+                }
+            }
+        }
+
+        // Take at most 4 options to map to A, B, C, D styling
+        rawOptions.slice(0, 4).forEach((answerText, index) => {
+            if (answerText) {
+                const styleDef = styles[index];
+                const div = document.createElement('div');
+                div.className = `host-option ${styleDef.class}`;
+                div.style.backgroundColor = styleDef.color;
+                div.innerHTML = `<div class="shape-icon ${styleDef.shape}"></div> <span style="flex-grow: 1;">${answerText}</span>`;
+                grid.appendChild(div);
+            }
+        });
+
+        showView(viewQuestion);
+
+        // Host timer
+        timeLeft = 30;
+        document.getElementById('hostTimerText').textContent = timeLeft;
+        if (timer) clearInterval(timer);
+        timer = setInterval(() => {
+            timeLeft--;
+            document.getElementById('hostTimerText').textContent = timeLeft;
+            if (timeLeft <= 0) skipTimer();
+        }, 1000);
+    }
+
+    function skipTimer() {
+        if (timer) clearInterval(timer);
+
+        const q = quizQuestions[currentQuestionIndex];
+        socket.emit('host_show_results', {
+            session_id: sessionId,
+            quiz_id: q.id
+        });
+    }
+
+    socket.on('question_results', (data) => {
+        document.getElementById('correctAnswerText').textContent = `Correct Answer: ${data.correct_answer}`;
+
+        const container = document.getElementById('leaderboardContainer');
+        container.innerHTML = '';
+        data.leaderboard.forEach((p, idx) => {
+            container.innerHTML += `<div class="leaderboard-row">
+                 <span>${idx + 1}. ${p.display_name}</span>
+                 <span>${p.score}</span>
+             </div>`;
+        });
+
+        showView(viewResults);
+    });
+
+    function endSession() {
+        socket.emit('host_end_session', { session_id: sessionId });
+    }
+
+    socket.on('session_finished', (data) => {
+        document.getElementById('correctAnswerText').textContent = "Game Finished! Final Rankings:";
+
+        const container = document.getElementById('leaderboardContainer');
+        container.innerHTML = '';
+        data.leaderboard.forEach((p, idx) => {
+            container.innerHTML += `<div class="leaderboard-row">
+                 <span>${idx + 1}. ${p.display_name}</span>
+                 <span>${p.score}</span>
+             </div>`;
+        });
+
+        const btn = document.getElementById('btnNextAction');
+        btn.textContent = "Back to Dashboard";
+        btn.onclick = () => { window.location.href = '/dashboard'; };
+    });
+
+</script>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Quiz - MEMRACE AI{% endblock %}
+
+{% block body %}
+<div class="quiz-page">
+    <div class="quiz-container">
+        <!-- Header -->
+        <header class="quiz-header">
+            <a href="/dashboard" class="back-btn">← Back to Dashboard</a>
+            <div class="quiz-info">
+                <span id="questionProgress">Question 0 / 0</span>
+                <div class="timer-container glass" style="padding: 10px; border-radius: 50%;">
+                    <svg class="timer-circle" width="60" height="60">
+                        <circle class="timer-bg" cx="30" cy="30" r="25"></circle>
+                        <circle id="timerCircle" class="timer-progress" cx="30" cy="30" r="25"
+                            style="filter: drop-shadow(0 0 5px var(--accent-yellow));"></circle>
+                    </svg>
+                    <span id="timerText" class="timer-text">30</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Question Display -->
+        <div id="quizContent" class="quiz-content">
+            <div class="question-card glass" style="animation: fadeInUp 0.5s ease-out;">
+                <h2 id="questionText" style="color: var(--primary-purple); font-size: 2.2rem;">Loading quiz...</h2>
+
+                <div id="optionsContainer" class="options-grid">
+                    <!-- Options will be inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Screen -->
+        <div id="resultsScreen" class="results-screen" style="display: none;">
+            <h2>🎯 Quiz Complete!</h2>
+            <div class="results-stats">
+                <div class="stat">
+                    <h3 id="totalQuestions">0</h3>
+                    <p>Total Questions</p>
+                </div>
+                <div class="stat">
+                    <h3 id="correctAnswers">0</h3>
+                    <p>Correct Answers</p>
+                </div>
+                <div class="stat">
+                    <h3 id="quizAccuracy">0%</h3>
+                    <p>Score</p>
+                </div>
+            </div>
+
+            <div class="results-actions">
+                <button class="btn-primary" onclick="window.location.href='/dashboard'">Back to Dashboard</button>
+                <button class="btn-secondary" onclick="location.reload()">Retake Quiz</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/quiz.js') }}"></script>
+{% endblock %}
